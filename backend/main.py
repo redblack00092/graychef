@@ -233,17 +233,16 @@ async def analyze_food(file: UploadFile = File(...)):
     except Exception:
         raise HTTPException(status_code=400, detail="유효하지 않은 이미지 파일입니다.")
 
-    # 각 스레드에 독립적인 PIL Image 인스턴스 전달 (스레드 안전)
-    image_sweet = PIL.Image.open(io.BytesIO(image_data))
-    image_spicy = PIL.Image.open(io.BytesIO(image_data))
+    image = PIL.Image.open(io.BytesIO(image_data))
 
-    # 달달한(점수+팁+코멘트)과 빨간맛(코멘트) 동시 호출 — 30초 타임아웃
+    # 달달한 → 빨간맛 순차 호출 — 각각 30초 타임아웃
     try:
-        sweet_raw, spicy_raw = await asyncio.wait_for(
-            asyncio.gather(
-                _call_gemini(SWEET_SYSTEM_PROMPT, SWEET_USER_PROMPT, image_sweet),
-                _call_gemini(SPICY_SYSTEM_PROMPT, SPICY_USER_PROMPT, image_spicy),
-            ),
+        sweet_raw = await asyncio.wait_for(
+            _call_gemini(SWEET_SYSTEM_PROMPT, SWEET_USER_PROMPT, image),
+            timeout=30.0,
+        )
+        spicy_raw = await asyncio.wait_for(
+            _call_gemini(SPICY_SYSTEM_PROMPT, SPICY_USER_PROMPT, image),
             timeout=30.0,
         )
     except asyncio.TimeoutError:

@@ -72,7 +72,6 @@ export default function UploadScreen({ onImageSelect }) {
           ref={inputRef}
           type="file"
           accept="image/*"
-          capture="environment"
           className="hidden"
           onChange={(e) => handleFile(e.target.files[0])}
         />

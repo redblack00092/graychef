@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(chmod +x:*)",
+      "Bash(make backend:*)",
+      "Bash(python3 -m venv .venv)",
+      "Bash(.venv/bin/pip install:*)",
+      "Bash(.venv/bin/uvicorn main:app --port 8000)",
+      "Bash(curl -s http://localhost:8000/)",
+      "Bash(kill %1)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(.venv/bin/uvicorn main:app --port 8001)",
+      "Bash(curl -s https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Biryani_at_a_restaurant.jpg/320px-Biryani_at_a_restaurant.jpg -o /tmp/test_food.jpg)",
+      "Bash(curl -s -X POST http://localhost:8001/analyze -F file=@/tmp/test_food.jpg -w '\\\\n[HTTP %{http_code}]')",
+      "Bash(.venv/bin/python3 -c ':*)"
+    ]
+  }
+}

@@ -213,7 +213,7 @@ async def _call_gemini(system_instruction: str, user_prompt: str, image) -> str:
 
 # ── 엔드포인트 ───────────────────────────────────────────────────────────────
 
-@app.get("/")
+@app.get("/api/health")
 def health_check():
     return {"status": "ok", "service": "그레이셰프"}
 
@@ -237,11 +237,17 @@ async def analyze_food(file: UploadFile = File(...)):
     image_sweet = PIL.Image.open(io.BytesIO(image_data))
     image_spicy = PIL.Image.open(io.BytesIO(image_data))
 
-    # 달달한(점수+팁+코멘트)과 빨간맛(코멘트) 동시 호출
-    sweet_raw, spicy_raw = await asyncio.gather(
-        _call_gemini(SWEET_SYSTEM_PROMPT, SWEET_USER_PROMPT, image_sweet),
-        _call_gemini(SPICY_SYSTEM_PROMPT, SPICY_USER_PROMPT, image_spicy),
-    )
+    # 달달한(점수+팁+코멘트)과 빨간맛(코멘트) 동시 호출 — 30초 타임아웃
+    try:
+        sweet_raw, spicy_raw = await asyncio.wait_for(
+            asyncio.gather(
+                _call_gemini(SWEET_SYSTEM_PROMPT, SWEET_USER_PROMPT, image_sweet),
+                _call_gemini(SPICY_SYSTEM_PROMPT, SPICY_USER_PROMPT, image_spicy),
+            ),
+            timeout=30.0,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="AI 분석 시간이 초과됐습니다. 다시 시도해 주세요.")
 
     try:
         sweet_data = _parse_json(sweet_raw)

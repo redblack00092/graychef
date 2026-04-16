@@ -218,7 +218,7 @@ def health_check():
     return {"status": "ok", "service": "그레이셰프"}
 
 
-@app.post("/analyze")
+@app.post("/api/analyze")
 async def analyze_food(file: UploadFile = File(...)):
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="이미지 파일만 업로드 가능합니다.")

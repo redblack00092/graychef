@@ -19,7 +19,7 @@ export default function App() {
       const formData = new FormData()
       formData.append('file', file)
 
-      const response = await fetch('/analyze', {
+      const response = await fetch('/api/analyze', {
         method: 'POST',
         body: formData,
       })

@@ -170,28 +170,46 @@ function TipCards({ result, mode }) {
 }
 
 export default function ResultScreen({ imageUrl, result, mode, onModeChange, onReset }) {
-  const cardRef = useRef(null)
+  const shareRef = useRef(null)  // 캡처 대상: 이미지 + 팁 카드 전체
+  const cardRef = useRef(null)   // 이미지 오버레이용
 
   const handleShare = async () => {
-    if (!cardRef.current) return
+    if (!shareRef.current) return
     try {
-      const canvas = await html2canvas(cardRef.current, {
+      const isSpicy = mode === 'spicy'
+      const bgColor = isSpicy ? '#1a0505' : '#0E0E0C'
+
+      const canvas = await html2canvas(shareRef.current, {
         useCORS: true,
-        backgroundColor: null,
+        allowTaint: true,
+        backgroundColor: bgColor,
         scale: 2,
+        logging: false,
+        imageTimeout: 15000,
       })
 
-      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
-      const file = new File([blob], 'greychef.png', { type: 'image/png' })
+      const blob = await new Promise((resolve) =>
+        canvas.toBlob(resolve, 'image/png')
+      )
+      const filename = 'graychef_결과.png'
+      const file = new File([blob], filename, { type: 'image/png' })
 
-      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+      // 모바일 Web Share API (파일 공유 지원 여부 확인)
+      if (
+        navigator.share &&
+        typeof navigator.canShare === 'function' &&
+        navigator.canShare({ files: [file] })
+      ) {
         await navigator.share({ title: '그레이셰프 분석 결과', files: [file] })
       } else {
+        // fallback: 이미지 다운로드
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = 'greychef_result.png'
+        a.download = filename
+        document.body.appendChild(a)
         a.click()
+        document.body.removeChild(a)
         URL.revokeObjectURL(url)
       }
     } catch (err) {
@@ -202,11 +220,17 @@ export default function ResultScreen({ imageUrl, result, mode, onModeChange, onR
   return (
     <main className="flex flex-col items-center px-4 pb-16 animate-fade-in">
       <div className="w-full max-w-sm space-y-3">
-        <ImageCard imageUrl={imageUrl} result={result} mode={mode} cardRef={cardRef} />
+        {/* shareRef: 이미지 + 팁 카드 — 캡처 대상 영역 */}
+        <div
+          ref={shareRef}
+          className="space-y-3"
+          style={{ backgroundColor: mode === 'spicy' ? '#1a0505' : '#0E0E0C', padding: '0 0 8px' }}
+        >
+          <ImageCard imageUrl={imageUrl} result={result} mode={mode} cardRef={cardRef} />
+          <TipCards result={result} mode={mode} />
+        </div>
 
         <ModeButtons mode={mode} onModeChange={onModeChange} />
-
-        <TipCards result={result} mode={mode} />
 
         <div className="flex gap-2 pt-1">
           <button

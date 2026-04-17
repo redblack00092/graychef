@@ -1,7 +1,6 @@
 import os
 import json
 import io
-import re
 import asyncio
 import PIL.Image
 import google.generativeai as genai
@@ -178,10 +177,44 @@ GENERATION_CONFIG = {
     "temperature": 0.9,
 }
 
+# ── 이미지 전처리 ─────────────────────────────────────────────────────────────
+
+MAX_IMAGE_PX = 1024  # 긴 변 최대 픽셀
+
+def _preprocess_image(image_data: bytes) -> PIL.Image.Image:
+    """검증 → 리사이즈 → JPEG 재인코딩 → 픽셀 로드. 원본 bytes는 호출 측에서 del."""
+    # 검증
+    try:
+        tmp = PIL.Image.open(io.BytesIO(image_data))
+        tmp.verify()
+    except Exception:
+        raise HTTPException(status_code=400, detail="유효하지 않은 이미지 파일입니다.")
+
+    # 재오픈 (verify() 이후 이미지 상태 손상됨)
+    image = PIL.Image.open(io.BytesIO(image_data))
+
+    # 리사이즈 (긴 변 MAX_IMAGE_PX 이하로)
+    if max(image.size) > MAX_IMAGE_PX:
+        image.thumbnail((MAX_IMAGE_PX, MAX_IMAGE_PX), PIL.Image.LANCZOS)
+
+    # RGB 변환 후 JPEG 재인코딩 (메모리 절감)
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+
+    buf = io.BytesIO()
+    image.save(buf, format="JPEG", quality=85, optimize=True)
+    image.close()
+
+    buf.seek(0)
+    image = PIL.Image.open(buf)
+    image.load()   # 픽셀 데이터를 메모리에 완전히 로드
+    buf.close()    # 버퍼 해제
+
+    return image
+
 # ── Gemini 호출 헬퍼 ─────────────────────────────────────────────────────────
 
 def _parse_json(text: str) -> dict:
-    # 앞뒤 추론 텍스트가 섞여도 JSON 객체만 추출
     start = text.find('{')
     end = text.rfind('}')
     if start == -1 or end == -1 or end <= start:
@@ -189,10 +222,10 @@ def _parse_json(text: str) -> dict:
     return json.loads(text[start:end + 1])
 
 
-async def _call_gemini(system_instruction: str, user_prompt: str, image) -> str:
-    """Gemini 동기 호출을 스레드에서 실행. 모델 없으면 fallback."""
+async def _call_gemini(system_instruction: str, user_prompt: str, image: PIL.Image.Image) -> str:
     for model_name in ("gemini-2.5-flash-lite", "gemini-2.0-flash-lite"):
         try:
+            print(f"  [Gemini] {model_name} 호출 중...")
             model = genai.GenerativeModel(
                 model_name,
                 system_instruction=system_instruction,
@@ -201,11 +234,13 @@ async def _call_gemini(system_instruction: str, user_prompt: str, image) -> str:
             response = await asyncio.to_thread(
                 model.generate_content, [user_prompt, image]
             )
+            print(f"  [Gemini] {model_name} 응답 수신 완료")
             return response.text
         except Exception as e:
             err = str(e).lower()
             is_model_error = "not found" in err or ("model" in err and "invalid" not in err)
             if model_name == "gemini-2.5-flash-lite" and is_model_error:
+                print(f"  [Gemini] {model_name} 없음, fallback 시도")
                 continue
             raise HTTPException(status_code=500, detail=f"AI 분석 실패: {e}")
     raise HTTPException(status_code=500, detail="AI 모델을 찾을 수 없습니다.")
@@ -220,33 +255,43 @@ def health_check():
 
 @app.post("/api/analyze")
 async def analyze_food(file: UploadFile = File(...)):
+    print(f"[요청 수신] content_type={file.content_type}, filename={file.filename}")
+
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="이미지 파일만 업로드 가능합니다.")
 
     image_data = await file.read()
+    print(f"[파일 읽기 완료] size={len(image_data):,} bytes")
+
     if len(image_data) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="파일 크기는 10MB 이하여야 합니다.")
 
-    try:
-        img_check = PIL.Image.open(io.BytesIO(image_data))
-        img_check.verify()
-    except Exception:
-        raise HTTPException(status_code=400, detail="유효하지 않은 이미지 파일입니다.")
+    # 이미지 전처리 (리사이즈 + 재인코딩)
+    image = _preprocess_image(image_data)
+    del image_data  # 원본 bytes 즉시 해제
+    print(f"[이미지 전처리 완료] size={image.size}")
 
-    image = PIL.Image.open(io.BytesIO(image_data))
-
-    # 달달한 → 빨간맛 순차 호출 — 각각 30초 타임아웃
     try:
+        # sweet 호출
+        print("[Gemini sweet 호출 시작]")
         sweet_raw = await asyncio.wait_for(
             _call_gemini(SWEET_SYSTEM_PROMPT, SWEET_USER_PROMPT, image),
-            timeout=30.0,
+            timeout=60.0,
         )
+        print("[Gemini sweet 완료]")
+
+        # spicy 호출
+        print("[Gemini spicy 호출 시작]")
         spicy_raw = await asyncio.wait_for(
             _call_gemini(SPICY_SYSTEM_PROMPT, SPICY_USER_PROMPT, image),
-            timeout=30.0,
+            timeout=60.0,
         )
+        print("[Gemini spicy 완료]")
+
     except asyncio.TimeoutError:
         raise HTTPException(status_code=504, detail="AI 분석 시간이 초과됐습니다. 다시 시도해 주세요.")
+    finally:
+        image.close()  # 이미지 메모리 해제
 
     try:
         sweet_data = _parse_json(sweet_raw)
@@ -275,4 +320,5 @@ async def analyze_food(file: UploadFile = File(...)):
         ),
     }
 
+    print(f"[응답 완료] total_score={result['total_score']}")
     return result

@@ -16,7 +16,13 @@
       "Bash(.venv/bin/python3 -c ':*)",
       "Bash(curl -s -X POST http://localhost:8001/api/analyze -F file=@/tmp/test_large.jpg -w '\\\\n[HTTP %{http_code}]')",
       "Bash(python3 -c ':*)",
-      "Bash(curl -v -X POST http://localhost:8001/api/analyze -F file=@/tmp/test_large.jpg)"
+      "Bash(curl -v -X POST http://localhost:8001/api/analyze -F file=@/tmp/test_large.jpg)",
+      "Bash(curl -s -X POST http://localhost:8001/api/analyze -F file=@/tmp/not_food.jpg)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('is_food:', d.get\\('is_food'\\), '| total_score:', d.get\\('total_score'\\)\\)\" kill %1)",
+      "Bash(python3 -c \"from PIL import Image; img = Image.new\\('RGB', \\(400, 300\\), \\(30,100,200\\)\\); img.save\\('/tmp/not_food.jpg'\\)\")",
+      "Bash(curl -s -X POST http://localhost:8001/api/analyze -F \"file=@/tmp/not_food.jpg\")",
+      "Bash(.venv/bin/python3 -c \"from PIL import Image; img = Image.new\\('RGB', \\(400, 300\\), \\(30,100,200\\)\\); img.save\\('/tmp/not_food.jpg'\\); print\\('생성 완료'\\)\")",
+      "Bash(ls .venv/bin/python*)"
     ]
   }
 }

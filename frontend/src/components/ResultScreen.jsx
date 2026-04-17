@@ -200,7 +200,11 @@ export default function ResultScreen({ imageUrl, result, mode, onModeChange, onR
         typeof navigator.canShare === 'function' &&
         navigator.canShare({ files: [file] })
       ) {
-        await navigator.share({ title: '그레이셰프 분석 결과', files: [file] })
+        await navigator.share({
+          title: '그레이셰프 분석 결과',
+          text: `그레이셰프가 내 요리를 평가했어요! 총점 ${result.total_score}점 🍳`,
+          files: [file],
+        })
       } else {
         // fallback: 이미지 다운로드
         const url = URL.createObjectURL(blob)
